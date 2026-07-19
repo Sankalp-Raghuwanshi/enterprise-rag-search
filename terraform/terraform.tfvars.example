@@ -1,0 +1,6 @@
+# Copy this to terraform.tfvars and fill in your real values.
+# terraform.tfvars is gitignored - never commit real API keys or key pair names here.
+
+key_pair_name = "your-ec2-key-pair-name"
+groq_api_key  = "your-groq-api-key"
+aws_region    = "ap-south-1"

@@ -1,0 +1,74 @@
+[
+  {
+    "question": "What is this person's major and where do they study?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 5,
+    "notes": "Tests the intro/education chunk."
+  },
+  {
+    "question": "What is RESPIRA?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 9,
+    "notes": "Direct RESPIRA project description chunk."
+  },
+  {
+    "question": "What patent has this person published?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 7,
+    "notes": "Tests retrieval of the Automatic Footrest Assembly patent."
+  },
+  {
+    "question": "What NPTEL certifications has this person completed?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 8,
+    "notes": "Tests retrieval of Conservation Economics NPTEL cert."
+  },
+  {
+    "question": "What did this person learn from the Entrepreneurship course?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 8,
+    "notes": "Second chunk on page 8 - entrepreneurship/innovation course."
+  },
+  {
+    "question": "What AI project has this person built?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 10,
+    "notes": "Tests retrieval of Insight Pilot AI description."
+  },
+  {
+    "question": "Has this person studied Japanese?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 11,
+    "notes": "Tests retrieval of Japanese language learning section - a distinctive/unusual keyword."
+  },
+  {
+    "question": "What leadership positions does this person hold at college?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 12,
+    "notes": "Sports Council / Volleyball Club coordinator section."
+  },
+  {
+    "question": "What is Kaizen and why does this person mention it?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 5,
+    "notes": "Tests a specific, unusual keyword (Kaizen) buried mid-chunk - good BM25 stress test."
+  },
+  {
+    "question": "Does this person have any interest in India-Japan relations?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 5,
+    "notes": "Semantic/paraphrased query, not exact wording from the resume - good vector-search test."
+  },
+  {
+    "question": "What teamwork or adaptability skills does this person mention?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 5,
+    "notes": "Tests the last chunk on page 5 (teamwork/adaptability/initiative)."
+  },
+  {
+    "question": "What is the patent application number?",
+    "expected_source_file": "resume.pdf",
+    "expected_page": 7,
+    "notes": "Tests exact-string retrieval of a specific application number - strong BM25 test."
+  }
+]

@@ -9,5 +9,13 @@ data/ingested_files.json
 !data/uploads/.gitkeep
 !data/vectorstore/.gitkeep
 !data/keyword_index/.gitkeep
+
 .DS_Store
 data/.DS_Store
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/terraform.tfvars
+terraform/.terraform.lock.hcl

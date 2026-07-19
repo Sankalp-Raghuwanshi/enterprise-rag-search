@@ -17,7 +17,7 @@ from pipeline import ingest_file, answer_query  # noqa: E402
 st.set_page_config(page_title="Enterprise Knowledge Search", layout="wide")
 st.title("🔍 Enterprise Knowledge Search")
 st.caption("Upload documents, then ask questions in plain English. "
-           "Phase 2: hybrid retrieval - vector + BM25 (PDF + DOCX).")
+           "Hybrid retrieval (vector + BM25) with cross-encoder reranking (PDF + DOCX).")
 
 if "ingested_files" not in st.session_state:
     st.session_state.ingested_files = []

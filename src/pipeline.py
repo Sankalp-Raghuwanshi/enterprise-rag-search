@@ -1,33 +1,36 @@
 """
 pipeline.py
 -----------
-Ties extract -> chunk -> retrieve (hybrid: vector + BM25) -> generate
-into two simple functions:
+Ties extract -> chunk -> retrieve (hybrid) -> rerank -> generate into
+two simple functions:
 
     ingest_file(file_path, display_name=None)
     answer_query(query_text)
 
-Phase 2 updates:
- - retrieval is now hybrid (vector + BM25 fused via RRF) instead of
-   vector-only. Reranking comes in Phase 3.
- - ingestion is deduplicated by content hash (see _manifest functions
-   below) so re-uploading the same file - even under a different temp
-   path/name, as Streamlit does - doesn't create duplicate chunks.
+Phase 2: hybrid retrieval (vector + BM25 fused via RRF), content-hash
+dedup on ingestion.
+Phase 3: cross-encoder reranking - retrieve a wide candidate pool via
+hybrid search, then rerank down to the final top_k for precision.
+Phase 4: sources shown to the user are filtered to only the chunks the
+LLM actually cited (parsed from "[Chunk N]" markers in the answer).
 
 Keep this file thin - it's the orchestration layer, not where logic lives.
 """
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from extract import extract_document
 from chunker import chunk_pages
 from hybrid_retrieval import HybridRetriever
+from reranker import Reranker
 from llm import generate_answer
 
-# Single shared retriever instance for the app's lifetime.
+# Single shared instances for the app's lifetime.
 _store = HybridRetriever()
+_reranker = Reranker()
 
 MANIFEST_PATH = Path("../data/ingested_files.json")
 
@@ -91,30 +94,47 @@ def ingest_file(file_path: str, display_name: str = None) -> dict:
     return {"status": "ingested", "chunks_added": len(chunks), "display_name": display_name}
 
 
-def answer_query(query_text: str, top_k: int = 5) -> dict:
+def answer_query(query_text: str, top_k: int = 5, retrieval_pool: int = 15) -> dict:
     """
-    Retrieve relevant chunks for a query and generate a grounded answer.
-    Returns a dict with the answer text and the source chunks used,
-    so the UI can render citations.
-    """
-    retrieved = _store.query(query_text, top_k=top_k)
+    Retrieve relevant chunks for a query, rerank them, and generate a
+    grounded answer. Returns a dict with the answer text and the source
+    chunks the LLM actually cited, so the UI can render citations.
 
-    if not retrieved:
+    retrieval_pool: how many candidates hybrid retrieval pulls BEFORE
+    reranking narrows down to top_k. Wider than top_k on purpose - the
+    cross-encoder needs a reasonable shortlist to actually improve on,
+    not just the same top_k hybrid retrieval already picked.
+    """
+    candidates = _store.query(query_text, top_k=retrieval_pool)
+
+    if not candidates:
         return {
             "answer": "No documents have been ingested yet, or none were relevant to this query.",
             "sources": [],
         }
 
-    answer = generate_answer(query_text, retrieved)
+    reranked = _reranker.rerank(query_text, candidates, top_k=top_k)
 
-    sources = [
+    answer = generate_answer(query_text, reranked)
+
+    all_sources = [
         {
             "source_file": r["metadata"]["source_file"],
             "page_number": r["metadata"]["page_number"],
             "snippet": r["text"][:200],
         }
-        for r in retrieved
+        for r in reranked
     ]
+
+    # Phase 4: only surface sources the LLM actually cited (e.g. "[Chunk 2]"),
+    # so the Sources panel reflects what was used, not everything retrieved.
+    cited_indices = set(int(n) for n in re.findall(r"\[Chunk (\d+)\]", answer))
+    if cited_indices:
+        sources = [s for i, s in enumerate(all_sources, start=1) if i in cited_indices]
+    else:
+        # Fallback: if the model didn't use the citation format, show everything
+        # retrieved rather than an empty (and misleading) sources list.
+        sources = all_sources
 
     return {"answer": answer, "sources": sources}
 
