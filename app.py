@@ -13,6 +13,7 @@ import streamlit as st
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 from pipeline import ingest_file, answer_query  # noqa: E402
+from agent import run_agent  # noqa: E402
 
 st.set_page_config(page_title="Enterprise Knowledge Search", layout="wide")
 st.title("🔍 Enterprise Knowledge Search")
@@ -57,10 +58,22 @@ if st.session_state.ingested_files:
 # --- Query section ---
 st.subheader("2. Ask a question")
 query = st.text_input("e.g. 'Summarize the onboarding process' or 'Which document mentions Terraform?'")
+use_agent = st.checkbox(
+    "Use agent mode (decides if retrieval is needed, decomposes complex questions)",
+    value=False,
+)
 
 if st.button("Search") and query:
-    with st.spinner("Retrieving and generating answer..."):
-        result = answer_query(query)
+    if use_agent:
+        with st.spinner("Agent is routing, decomposing, and retrieving..."):
+            result = run_agent(query)
+
+        with st.expander("🧠 Agent trace (what it decided to do)"):
+            st.write(f"**Used retrieval:** {result['trace']['used_retrieval']}")
+            st.write(f"**Sub-questions:** {result['trace']['sub_questions']}")
+    else:
+        with st.spinner("Retrieving and generating answer..."):
+            result = answer_query(query)
 
     st.markdown("### Answer")
     st.write(result["answer"])

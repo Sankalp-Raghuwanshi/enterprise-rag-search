@@ -94,6 +94,21 @@ def ingest_file(file_path: str, display_name: str = None) -> dict:
     return {"status": "ingested", "chunks_added": len(chunks), "display_name": display_name}
 
 
+def retrieve_context(query_text: str, top_k: int = 5, retrieval_pool: int = 15) -> list:
+    """
+    Retrieve and rerank chunks for a query, WITHOUT generating an LLM answer.
+    This is the piece the agent (agent.py) calls once per sub-question,
+    before combining everything into a single final generation step -
+    separating "find relevant context" from "write an answer" is what
+    lets the agent run retrieval multiple times cheaply while only
+    calling the (slower, costlier) generation step once at the end.
+    """
+    candidates = _store.query(query_text, top_k=retrieval_pool)
+    if not candidates:
+        return []
+    return _reranker.rerank(query_text, candidates, top_k=top_k)
+
+
 def answer_query(query_text: str, top_k: int = 5, retrieval_pool: int = 15) -> dict:
     """
     Retrieve relevant chunks for a query, rerank them, and generate a
@@ -105,15 +120,13 @@ def answer_query(query_text: str, top_k: int = 5, retrieval_pool: int = 15) -> d
     cross-encoder needs a reasonable shortlist to actually improve on,
     not just the same top_k hybrid retrieval already picked.
     """
-    candidates = _store.query(query_text, top_k=retrieval_pool)
+    reranked = retrieve_context(query_text, top_k=top_k, retrieval_pool=retrieval_pool)
 
-    if not candidates:
+    if not reranked:
         return {
             "answer": "No documents have been ingested yet, or none were relevant to this query.",
             "sources": [],
         }
-
-    reranked = _reranker.rerank(query_text, candidates, top_k=top_k)
 
     answer = generate_answer(query_text, reranked)
 
@@ -135,6 +148,17 @@ def answer_query(query_text: str, top_k: int = 5, retrieval_pool: int = 15) -> d
         # Fallback: if the model didn't use the citation format, show everything
         # retrieved rather than an empty (and misleading) sources list.
         sources = all_sources
+
+    # Dedupe by (source_file, page_number) for display - multiple chunks can
+    # legitimately share a page, which would otherwise repeat in the list.
+    seen_pages = set()
+    deduped_sources = []
+    for s in sources:
+        key = (s["source_file"], s["page_number"])
+        if key not in seen_pages:
+            seen_pages.add(key)
+            deduped_sources.append(s)
+    sources = deduped_sources
 
     return {"answer": answer, "sources": sources}
 

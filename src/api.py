@@ -22,6 +22,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
 
 from pipeline import ingest_file, answer_query
+from agent import run_agent
 
 app = FastAPI(
     title="Enterprise Knowledge Search API",
@@ -73,6 +74,20 @@ def query_documents(request: QueryRequest):
 
     result = answer_query(request.question, top_k=request.top_k)
     return result
+
+
+@app.post("/agent")
+def query_with_agent(request: QueryRequest):
+    """
+    Ask a question via the agentic layer: routes (decides if retrieval is
+    needed), decomposes complex questions into sub-questions, retrieves
+    for each, and synthesizes one grounded answer. Returns an additional
+    'trace' field showing the agent's intermediate decisions.
+    """
+    if not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    return run_agent(request.question, top_k_per_subquestion=request.top_k)
 
 
 if __name__ == "__main__":

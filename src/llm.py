@@ -24,6 +24,34 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.3-70b-versatile"  # check console.groq.com/docs/models for current options
 
 
+def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.1, model: str = GROQ_MODEL) -> str:
+    """
+    General-purpose LLM call - the raw building block underneath both
+    generate_answer() (grounded Q&A) and the agent's planning steps
+    (deciding whether to retrieve, decomposing questions). Keeping this
+    as one shared function means both use cases go through the same
+    API-calling logic, error handling, and provider config.
+    """
+    response = requests.post(
+        GROQ_API_URL,
+        headers={
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": temperature,
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"]
+
+
 def generate_answer(query: str, context_chunks: list, model: str = GROQ_MODEL) -> str:
     """
     Given a user query and a list of retrieved chunk dicts (with 'text' and
@@ -48,27 +76,11 @@ def generate_answer(query: str, context_chunks: list, model: str = GROQ_MODEL) -
 
     user_prompt = f"Context:\n{context_text}\n\nQuestion: {query}\n\nAnswer:"
 
-    response = requests.post(
-        GROQ_API_URL,
-        headers={
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.1,
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    return call_llm(system_prompt, user_prompt, temperature=0.1, model=model)
 
 
 if __name__ == "__main__":
+    # Quick manual test with fake context
     fake_chunks = [
         {"text": "Terraform is used to provision AWS infrastructure for the search API.",
          "metadata": {"source_file": "deployment.pdf", "page_number": 3}}
