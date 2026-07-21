@@ -48,7 +48,8 @@ if uploaded_files:
         if result["status"] == "duplicate":
             st.info(f"'{uploaded_file.name}' was already ingested previously - skipped re-processing.")
         else:
-            st.success(f"Ingested {uploaded_file.name} ({result['chunks_added']} chunks)")
+            image_note = f", {result['images_added']} images described" if result.get("images_added") else ""
+            st.success(f"Ingested {uploaded_file.name} ({result['chunks_added']} chunks{image_note})")
 
         os.unlink(tmp_path)
 

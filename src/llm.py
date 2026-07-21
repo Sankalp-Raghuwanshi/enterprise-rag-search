@@ -21,7 +21,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"  # check console.groq.com/docs/models for current options
+GROQ_MODEL = "openai/gpt-oss-120b"  # llama-3.3-70b-versatile was deprecated June 2026; verify at console.groq.com/docs/models
 
 
 def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.1, model: str = GROQ_MODEL) -> str:

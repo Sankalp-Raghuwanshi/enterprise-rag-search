@@ -477,3 +477,87 @@ open-ended multi-step reasoning - that's when a framework's abstractions
 complexity cost. Recognizing *when* a framework is worth it - not just
 defaulting to one - is itself the more valuable engineering judgment.
 
+---
+
+## 18. `image_extractor.py` + `vision.py` — multimodal search, and a real PII lesson learned building it
+
+### Why images need their own extraction path
+
+`extract.py` (Section 2) pulls out the TEXT layer of a PDF - but PDFs
+routinely contain images too: photos, scanned pages, charts, logos,
+screenshots. A PDF's text layer and its embedded images are stored
+completely differently internally, so they need different libraries.
+`image_extractor.py` uses PyMuPDF (`fitz`) specifically because pypdf's
+image extraction is inconsistent across different PDF encoders - not
+every embedded image comes back cleanly.
+
+### Making images searchable without storing images in the search index
+
+The key design decision in `vision.py`: a vision-capable LLM describes
+each image in natural language, and **only that text description** gets
+embedded and indexed - never the image itself. This means:
+
+- The vector store and BM25 index don't need any special handling for
+  "this is an image" - they just see more text with the same
+  `source_file`/`page_number` metadata as every other chunk.
+- Hybrid retrieval, reranking, and citation generation all work on
+  image-derived chunks completely unchanged - no new code path needed
+  anywhere downstream of ingestion. This is why the description gets
+  wrapped as a `Chunk` object (`pipeline.py`'s `_process_images()`) with
+  a `chunk_index` like `"image-0"` - it's the same data structure as a
+  text chunk, just tagged for clarity.
+
+### The real PII discovery - and why it matters more than a hypothetical one would
+
+While testing this feature on a real personal document, the vision
+model correctly transcribed an embedded application form image -
+including full name, date of birth, phone number, home address, and
+citizenship details, buried on a page whose *visible* text content
+(the essay-style "ANSWER 1/2" sections) had nothing to do with any of
+that.
+
+This is a genuinely important, transferable lesson about production RAG
+systems, not just a one-off mistake to note and move past:
+
+- **Text-only extraction can silently miss sensitive content that only
+  exists inside an image** - a scanned form, a screenshot of an ID
+  card, a photographed document. A pipeline that only reads the text
+  layer would report (falsely) that a document contains no PII, when
+  in fact it does - just invisibly, inside an image.
+- **Adding vision/image extraction increases retrieval power AND
+  increases the surface area for accidentally indexing sensitive data.**
+  These two things arrive together - you cannot get the benefit of
+  "search now works over image content" without also taking on new
+  responsibility for what that image content might contain.
+- **A real enterprise search product needs a PII detection/redaction
+  step BEFORE indexing** - not after. Once sensitive text is embedded
+  and stored (in Chroma, in the BM25 `.jsonl`, potentially in logs), it
+  is retrievable by literally anyone who queries the system, with a
+  citation pointing directly at it. This project does not currently
+  implement such a filter - a clearly identified, honest limitation
+  worth stating rather than glossing over, and a natural "what would
+  you add next" answer in an interview.
+
+### Practical safeguard taken
+
+Any document containing personal/sensitive image content was excluded
+from public-facing demos and deployments, and locally indexed data was
+cleared after this discovery
+(`rm -rf data/vectorstore/* data/keyword_index/* data/ingested_files.json`).
+The `.gitignore` already excluded all of `data/` from version control,
+so nothing sensitive was ever committed to GitHub - worth verifying
+with `git log --all -- data/` any time a project handles real personal
+documents, rather than assuming the `.gitignore` is doing its job.
+
+### Model selection note
+
+`vision.py` uses `qwen/qwen3.6-27b`, Groq's currently vision-capable
+model as of mid-2026 (confirmed via `console.groq.com/docs/vision`).
+Provider model lineups change frequently - the earlier text model used
+throughout this project (`llama-3.3-70b-versatile`) was itself
+deprecated partway through building this, which is why `llm.py`'s
+`GROQ_MODEL` was updated to `openai/gpt-oss-120b`. Treating the model
+name as a single named constant, checked against current docs rather
+than hardcoded from memory, is what made both swaps a one-line change
+instead of a rewrite.
+

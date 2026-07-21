@@ -26,7 +26,7 @@ class Chunk:
     text: str
     source_file: str
     page_number: int
-    chunk_index: int  # position of this chunk within its source page/block
+    chunk_index: object  # int for text chunks (position within page); str like "image-0" for image-derived chunks
 
 
 def _split_text(text: str, chunk_size: int, overlap: int) -> List[str]:

@@ -20,10 +20,14 @@ Keep this file thin - it's the orchestration layer, not where logic lives.
 import hashlib
 import json
 import re
+import uuid
 from pathlib import Path
+from typing import List
 
 from extract import extract_document
-from chunker import chunk_pages
+from chunker import chunk_pages, Chunk
+from image_extractor import extract_images
+from vision import describe_image
 from hybrid_retrieval import HybridRetriever
 from reranker import Reranker
 from llm import generate_answer
@@ -60,7 +64,48 @@ def _hash_file(file_path: str) -> str:
     return hasher.hexdigest()
 
 
-def ingest_file(file_path: str, display_name: str = None) -> dict:
+def _process_images(file_path: str, display_name: str) -> List[Chunk]:
+    """
+    Extract embedded images (PDF only - DOCX images not yet supported),
+    describe each with a vision LLM, and wrap each description as a
+    Chunk - so images become searchable through the exact same hybrid
+    retrieval + rerank + citation pipeline as text, with no special
+    casing needed anywhere downstream.
+
+    Failures here (e.g. a misconfigured vision model, a corrupt image)
+    are caught and skipped individually - one bad image should not
+    fail the whole ingestion of an otherwise-fine document.
+    """
+    if Path(file_path).suffix.lower() != ".pdf":
+        return []  # image extraction currently PDF-only, see image_extractor.py
+
+    image_chunks = []
+    try:
+        images = extract_images(file_path, display_name=display_name)
+    except Exception as e:
+        print(f"Image extraction failed for {display_name}: {e}")
+        return []
+
+    for img in images:
+        try:
+            description = describe_image(img.image_bytes, image_ext=img.image_ext)
+        except Exception as e:
+            print(f"Vision description failed for {display_name} "
+                  f"p.{img.page_number} image {img.image_index}: {e}")
+            continue
+
+        image_chunks.append(Chunk(
+            id=str(uuid.uuid4()),
+            text=f"[Image on page {img.page_number}]: {description}",
+            source_file=img.source_file,
+            page_number=img.page_number,
+            chunk_index=f"image-{img.image_index}",
+        ))
+
+    return image_chunks
+
+
+def ingest_file(file_path: str, display_name: str = None, process_images: bool = True) -> dict:
     """
     Extract, chunk, embed, and index one file - skipping it if this exact
     content has already been ingested.
@@ -70,8 +115,12 @@ def ingest_file(file_path: str, display_name: str = None) -> dict:
     path that doesn't reflect the user's original filename (e.g. Streamlit
     uploads).
 
+    process_images: if True (default) and the file is a PDF, also extract
+    embedded images and index vision-LLM-generated descriptions of them,
+    so images become searchable alongside text.
+
     Returns: {"status": "ingested" | "duplicate", "chunks_added": int,
-              "display_name": str}
+              "images_added": int, "display_name": str}
     """
     display_name = display_name or Path(file_path).name
     file_hash = _hash_file(file_path)
@@ -81,17 +130,27 @@ def ingest_file(file_path: str, display_name: str = None) -> dict:
         return {
             "status": "duplicate",
             "chunks_added": 0,
+            "images_added": 0,
             "display_name": manifest[file_hash]["display_name"],
         }
 
     pages = extract_document(file_path, display_name=display_name)
     chunks = chunk_pages(pages)
-    _store.add_chunks(chunks)
 
-    manifest[file_hash] = {"display_name": display_name, "chunk_count": len(chunks)}
+    image_chunks = _process_images(file_path, display_name) if process_images else []
+
+    all_chunks = chunks + image_chunks
+    _store.add_chunks(all_chunks)
+
+    manifest[file_hash] = {"display_name": display_name, "chunk_count": len(all_chunks)}
     _save_manifest(manifest)
 
-    return {"status": "ingested", "chunks_added": len(chunks), "display_name": display_name}
+    return {
+        "status": "ingested",
+        "chunks_added": len(chunks),
+        "images_added": len(image_chunks),
+        "display_name": display_name,
+    }
 
 
 def retrieve_context(query_text: str, top_k: int = 5, retrieval_pool: int = 15) -> list:
@@ -179,7 +238,8 @@ if __name__ == "__main__":
         if result["status"] == "duplicate":
             print(f"Skipped - '{result['display_name']}' was already ingested.")
         else:
-            print(f"Ingested {result['chunks_added']} chunks from {result['display_name']}")
+            print(f"Ingested {result['chunks_added']} chunks "
+                  f"({result.get('images_added', 0)} images described) from {result['display_name']}")
 
     elif command == "ask":
         result = answer_query(sys.argv[2])
