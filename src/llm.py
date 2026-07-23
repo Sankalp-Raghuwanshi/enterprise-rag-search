@@ -52,17 +52,32 @@ def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.1, mod
     return response.json()["choices"][0]["message"]["content"]
 
 
+MAX_CHUNK_CHARS_IN_PROMPT = 1200  # caps each chunk's contribution to the prompt - see generate_answer()
+
+
 def generate_answer(query: str, context_chunks: list, model: str = GROQ_MODEL) -> str:
     """
     Given a user query and a list of retrieved chunk dicts (with 'text' and
     'metadata'), build a grounded prompt and call the LLM. Returns raw answer
     text (citation formatting is handled by the caller in pipeline.py).
+
+    Each chunk's text is capped at MAX_CHUNK_CHARS_IN_PROMPT before being
+    added to the prompt. This matters more than it looks: text chunks from
+    chunker.py are already bounded (~800 chars), but vision-generated image
+    descriptions (vision.py) can run much longer and unpredictably - a
+    request combining several long image descriptions can exceed the API's
+    payload size limit (a real 413 error hit during testing). Truncating
+    per-chunk keeps the total prompt size bounded regardless of what kind
+    of chunk it is or how verbose the vision model gets.
     """
     context_blocks = []
     for i, chunk in enumerate(context_chunks):
         src = chunk["metadata"]["source_file"]
         page = chunk["metadata"]["page_number"]
-        context_blocks.append(f"[Chunk {i+1} | Source: {src}, p.{page}]\n{chunk['text']}")
+        text = chunk["text"]
+        if len(text) > MAX_CHUNK_CHARS_IN_PROMPT:
+            text = text[:MAX_CHUNK_CHARS_IN_PROMPT] + "... [truncated]"
+        context_blocks.append(f"[Chunk {i+1} | Source: {src}, p.{page}]\n{text}")
 
     context_text = "\n\n".join(context_blocks)
 
