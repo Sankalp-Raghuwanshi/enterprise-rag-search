@@ -11,6 +11,17 @@ import tempfile
 
 import streamlit as st
 
+# Streamlit Cloud has no local .env file - secrets are set via its own
+# secrets manager (st.secrets) instead. Everything downstream (llm.py,
+# vision.py) reads GROQ_API_KEY via os.getenv(), so bridging st.secrets
+# into os.environ here means those modules need zero changes to work
+# in both environments (local .env for dev, Streamlit secrets for cloud).
+if "GROQ_API_KEY" not in os.environ:
+    try:
+        os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        pass  # falls through - local .env (via python-dotenv) handles it instead
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 from pipeline import ingest_file, answer_query  # noqa: E402
 from agent import run_agent  # noqa: E402
