@@ -1,5 +1,7 @@
 # Enterprise Knowledge Search (RAG)
 
+🔗 **[Live Demo](https://enterprise-rag-search-46vcwyu43xd5pabjbmznjq.streamlit.app)** — try it yourself (upload a PDF/DOCX, no personal/sensitive documents please - it's a public demo instance)
+
 A miniature enterprise search platform: upload documents, ask natural
 language questions in plain English, get grounded answers with citations.
 Built as a hands-on exploration of retrieval-augmented generation (RAG),
@@ -11,11 +13,17 @@ hybrid search, and reranking — the same core techniques behind modern
 - Upload PDF / DOCX documents
 - Automatically extracts text, chunks it, embeds it, and indexes it for
   both semantic (vector) and keyword (BM25) search
+- Also extracts embedded images from PDFs and describes them with a
+  vision-capable LLM, so image content (charts, posters, diagrams) is
+  searchable alongside text, with the same citations
 - Ask questions like *"Summarize the onboarding process"* or *"Which
   document mentions Terraform?"*
 - Retrieves relevant passages using **hybrid retrieval** (vector search +
   BM25, fused via Reciprocal Rank Fusion), then **reranks** them with a
   cross-encoder for precision
+- **Agent mode**: decides whether a question needs document retrieval at
+  all, decomposes compound questions into sub-questions, retrieves for
+  each, and synthesizes one grounded answer
 - Generates a grounded answer with inline citations `[Chunk N]`, mapped
   back to the real source file and page
 - Deduplicates re-uploaded files by content hash
